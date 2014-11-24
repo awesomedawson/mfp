@@ -1,6 +1,7 @@
 from threading import Thread
 from Queue import Queue
 from receive_queue import ReceiveQueue
+from mf_packet import MFPacket
 import socket
 
 class IOLoop(Thread):
@@ -25,7 +26,10 @@ class IOLoop(Thread):
                 pass
 
             try:
-                pair = self.socket.recvfrom()
-                self.receive_queue.put(pair)
+                packet, address = self.socket.recvfrom()
+
+                # TODO make sure valid packet
+                packet = MFPacket.parse(packet)
+                self.receive_queue.put((packet, address))
             except:
                 pass
