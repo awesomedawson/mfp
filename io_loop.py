@@ -20,7 +20,7 @@ class IOLoop(Thread):
                 self.exit()
 
             try:
-                packet, address = self.send_queue.get_nowait()
+                packet, address = self.send_queue.get(True, 0.1)
                 self.socket.sendto(packet.serialize(), address)
             except Queue.Empty:
                 pass

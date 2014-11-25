@@ -1,5 +1,5 @@
 class SlidingWindow:
-    def __init__(self, packets):
+    def __init__(self, packets, window_size):
         self.packets = packets
         self.window_size = window_size
         self.window_index = 0
@@ -7,7 +7,10 @@ class SlidingWindow:
 
     def slide(self):
         self.window_index += 1
-        self.__calculate_window
+        self.__calculate_window()
+
+    def is_empty(self):
+        return len(self.window) == 0
 
     def __calculate_window(self):
         if self.window_index + self.window_size < len(self.packets):

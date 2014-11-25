@@ -1,6 +1,9 @@
 import math
 import hashlib
 
+class ParseException(Exception):
+    pass
+
 class MFPacket:
     def __init__(
         self,
@@ -13,7 +16,6 @@ class MFPacket:
         ack = False,
         syn = False,
         fin = False,
-        checksum = None,
         window_size = 1024
     ):
         self.source_port = source_port
@@ -28,17 +30,34 @@ class MFPacket:
         self.checksum = 0
         self.window_size = window_size
         self.payload = payload
+        self.checksum = self.__class__.calculate_checksum(self.serialize())
 
+    @classmethod
+    def calculate_checksum(self, raw_packet):
         checksum_algorithm = hashlib.md5()
-        checksum_algorithm.update(self.serialize())
-        self.checksum = int(checksum_algorithm.hexdigest(), 16) & int(math.pow(2, 16) - 1)
-
-        if checksum and checksum != self.checksum:
-            raise Exception
+        checksum_algorithm.update(raw_packet)
+        return int(checksum_algorithm.hexdigest(), 16) & int(math.pow(2, 16) - 1)
 
     @classmethod
     def parse(self, data):
+        def validate_min_length(raw_packet):
+            if len(raw_packet) < 20:
+                raise ParseException
+
+        def validate_checksum(raw_packet):
+            raw_checksum = (ord(raw_packet[14]) << 8) | ord(raw_packet[15])
+            zeroed_packet = raw_packet[0 : 14] + chr(0) + chr(0) + raw_packet[16 :]
+            calculated_checksum = self.calculate_checksum(zeroed_packet)
+
+            if raw_checksum != calculated_checksum:
+                raise ParseException
+
+
+        validate_min_length(data)
+        validate_checksum(data)
+
         raw_packet = map(ord, data)
+
         return MFPacket(
             (raw_packet[0] << 8) | raw_packet[1],
             (raw_packet[2] << 8) | raw_packet[3],
@@ -49,8 +68,7 @@ class MFPacket:
             ack = (raw_packet[12] & 4) == 4,
             syn = (raw_packet[12] & 2) == 2,
             fin = (raw_packet[12] & 1) == 1,
-            checksum = (raw_packet[14] << 8) | raw_packet[15],
-            window_size = raw_packet[16] << 24 | raw_packet[17] << 16 | raw_packet[18] << 8 | raw_packet[19],
+            window_size = raw_packet[16] << 24 | raw_packet[17] << 16 | raw_packet[18] << 8 | raw_packet[19]
         )
 
     def serialize(self):

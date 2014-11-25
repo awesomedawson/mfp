@@ -1,10 +1,11 @@
 from mf_socket import MFSocket
 
 def main():
-    socket = MFSocket(1234)
+    socket = MFSocket()
+    socket.mf_assign(1234)
     socket.mf_connect(('127.0.0.1', 4321))
-    while True:
-        continue
+    socket.mf_write('hello. this is a test. 1234567890    xxxxxx')
+    socket.mf_close()
 
 if __name__ == '__main__':
     main()

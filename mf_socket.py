@@ -2,6 +2,7 @@ from mf_packet import MFPacket
 from io_loop import IOLoop
 from sliding_window import SlidingWindow
 import Queue
+import time
 
 class MFSocket:
     def __init__(self, window_size = 10):
@@ -47,7 +48,6 @@ class MFSocket:
             try:
                 packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
-                syn_ack_packet.frequency += 1
                 self.io_loop.send_queue.put((syn_ack_packet, self.destination))
                 continue
 
@@ -74,11 +74,10 @@ class MFSocket:
             try:
                 packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
-                syn_packet.frequency += 1
                 self.io_loop.send_queue.put((syn_packet, self.destination))
                 continue
 
-            syn_ack_received = packet.syn and packet.ack
+            syn_ack_received = address == self.destination and packet.syn and packet.ack
 
         # send ack
         ack_packet = MFPacket(
@@ -98,51 +97,76 @@ class MFSocket:
 
         # chunk data into packets
         while start < len(data):
-            if start + chunk_size <= len(data):
-                payload = data[start : start + chunk_size]
+            if start + payload_size <= len(data):
+                payload = data[start : start + payload_size]
             else:
                 payload = data[start :]
 
-            packet = MFPacket(
+            data_packet = MFPacket(
                 self.port_number,
                 self.destination[1],
                 sequence_number = self.sequence_number,
                 payload = payload
             )
-            packets.append(packet)
+            packets.append(data_packet)
             self.sequence_number += 1
+            start += payload_size
 
         # populate window and send all packets
         window = SlidingWindow(packets, self.window_size)
-        last_sent = time.time()
 
-        for packet in window.window:
-            self.io_loop.send_queue.put((packet, self.destination))
+        for data_packet in window.window:
+            self.io_loop.send_queue.put((data_packet, self.destination))
 
-        # pipeline the remaining data
-        retransmit_period = 1
-
-        while len(window.window) > 0:
+        while not window.is_empty():
             try:
                 # wait for incoming packet
-                packet, address = self.io_loop.send_queue.get(True, retransmit_period)
+                ack_packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
                 # timeout, go back n
-                last_sent = time.time()
-                for packet in window.window:
-                    self.io_loop.send_queue.put((packet, self.destination))
+                for data_packet in window.window:
+                    self.io_loop.send_queue.put((data_packet, self.destination))
 
                 continue
 
             # if first packet in pipeline is acknowledged, slide the window
-            if packet.ack and packet.ack_number == window.window[0].sequence_number - 1:
+            if ack_packet.ack and ack_packet.ack_number - 1 == window.window[0].sequence_number:
                 window.slide()
-            # otherwise, continue with the timeout
-            else:
-                retransmit_period = time.time() - sent
 
     def mf_read(self):
-        pass
+        fin_received = False
+        packets = {}
+
+        while not fin_received:
+            try:
+                data_packet, address = self.io_loop.receive_queue.get(True, 1)
+            except Queue.Empty:
+                continue
+
+            if address == self.destination:
+                if data_packet.fin:
+                    fin_received = True
+                else:
+                    packets[data_packet.sequence_number] = data_packet
+                    ack_packet = MFPacket(
+                        self.port_number,
+                        self.destination[1],
+                        sequence_number = self.sequence_number,
+                        ack = True,
+                        ack_number = data_packet.sequence_number + 1
+                    )
+                    self.io_loop.send_queue.put((ack_packet, self.destination))
+                    self.sequence_number += 1
+
+        return ''.join(map(lambda packet: packet.payload, map(lambda sequence_number: packets[sequence_number], sorted(packets.keys()))))
 
     def mf_close(self):
-        pass
+        fin_packet = MFPacket(
+            self.port_number,
+            self.destination[1],
+            sequence_number = self.sequence_number,
+            fin = True
+        )
+        self.io_loop.send_queue.put((fin_packet, self.destination))
+        self.sequence_number += 1
+        time.sleep(3)
