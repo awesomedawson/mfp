@@ -12,13 +12,9 @@ class IOLoop(Thread):
         self.send_queue = Queue.Queue()
         self.receive_queue = Queue.Queue()
         self.socket.settimeout(0.01)
-        self.exit = False
 
     def run(self):
         while True:
-            if self.exit:
-                self.exit()
-
             try:
                 packet, address = self.send_queue.get(True, 0.1)
                 self.socket.sendto(packet.serialize(), address)
