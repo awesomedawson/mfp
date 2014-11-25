@@ -169,4 +169,3 @@ class MFSocket:
         )
         self.io_loop.send_queue.put((fin_packet, self.destination))
         self.sequence_number += 1
-        time.sleep(3)

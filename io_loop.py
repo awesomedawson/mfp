@@ -2,6 +2,7 @@ from threading import Thread
 import Queue
 from receive_queue import ReceiveQueue
 from mf_packet import MFPacket
+from mf_packet import ParseException
 import socket
 
 class IOLoop(Thread):
@@ -25,5 +26,5 @@ class IOLoop(Thread):
                 packet, address = self.socket.recvfrom(4096)
                 packet = MFPacket.parse(packet)
                 self.receive_queue.put((packet, address))
-            except socket.timeout:
+            except (socket.timeout, ParseException):
                 pass
