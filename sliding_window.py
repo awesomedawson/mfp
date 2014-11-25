@@ -1,37 +1,16 @@
 class SlidingWindow:
-    def __init__(self, window_size = 10):
-        self.window = []
+    def __init__(self, packets):
+        self.packets = packets
         self.window_size = window_size
-        self.beginning_sequence_number = 0
-        self.ending_sequence_number = window_size - 1
+        self.window_index = 0
+        self.__calculate_window()
 
     def slide(self):
-        num_acknowledged = 0
+        self.window_index += 1
+        self.__calculate_window
 
-        for element in window:
-            if element.acknowledged:
-                num_acknowledged += 1
-
-        self.beginning_sequence_number += num_acknowledged
-        self.ending_sequence_number += num_acknowledged
-        self.window = window[num_acknowledged : len(window)]
-
-    def add(self, packet):
-        if len(self.window) == self.window_size:
-            return False
-
-        element = WindowElement(packet)
-
-        if len(window) == 0:
-            window.append(element)
-        elif (window[0].packet.sequence_number > packet.sequence_number):
-            window = [element] + window
-        elif (window[-1].packet.sequence_number < packet.sequence_number):
-            window = window + [element]
+    def __calculate_window(self):
+        if self.window_index + self.window_size < len(self.packets):
+            self.window = self.packets[self.window_index : self.window_index + self.window_size]
         else:
-            for i in range(len(window)):
-                if window[i].packet.sequence_number > packet.sequence_number:
-                    window = window[0 : i] + [element] + window[i : len(window)]
-
-        self.ending_sequence_number += 1
-        return True
+            self.window = self.packets[self.window_index : len(self.packets)]
