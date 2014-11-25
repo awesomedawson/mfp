@@ -20,7 +20,7 @@ class MFSocket:
         self.io_loop.start()
 
         while not syn_received or not ack_received:
-            packet, address = self.io_loop.receive_queue.get().packet
+            packet, address = self.io_loop.receive_queue.get()
 
             if syn_received:
                 if packet.ack:
@@ -42,26 +42,25 @@ class MFSocket:
         syn_ack_received = False
         self.io_loop.start()
 
-        print "Before put"
         # TODO retransmit timer
         self.io_loop.send_queue.put((MFPacket(
             self.port_number,
             address[1],
             syn = True
         ), address))
-        print "After put"
 
         while not syn_ack_received:
-            packet, address = self.io_loop.receive_queue.get().packet
+            packet, address = self.io_loop.receive_queue.get()
 
             if packet.syn and packet.ack:
                 syn_ack_received = True
 
                 # TODO retransmit timer
                 self.io_loop.send_queue.put((MFPacket(
-                    port_number,
+                    self.port_number,
                     address[1],
                     ack_number = packet.sequence_number + 1,
+                    sequence_number = 1,
                     ack = True
                 ), address))
 

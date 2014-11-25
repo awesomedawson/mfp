@@ -15,6 +15,8 @@ class ReceiveQueue:
             self.queue.append(pair)
             self.queue.sort(key = lambda pair: pair[0].sequence_number)
 
+            print self.queue[0][0].sequence_number
+            print self.next_sequence_number
             if self.queue[0][0].sequence_number == self.next_sequence_number:
                 self.next_element_available.notify()
         finally:

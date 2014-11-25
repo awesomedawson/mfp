@@ -42,7 +42,7 @@ class MFPacket:
         return MFPacket(
             (raw_packet[0] << 8) | raw_packet[1],
             (raw_packet[2] << 8) | raw_packet[3],
-            payload = raw_packet[20 : 20 + raw_packet[13] * 4],
+            payload = data[20 : 20 + raw_packet[13] * 4],
             sequence_number = raw_packet[4] << 24 | raw_packet[5] << 16 | raw_packet[6] << 8 | raw_packet[7],
             ack_number = raw_packet[8] << 24 | raw_packet[9] << 16 | raw_packet[10] << 8 | raw_packet[11],
             frequency = raw_packet[12] >> 3,
@@ -74,5 +74,4 @@ class MFPacket:
             byte_array.append((word & BIT_MASK_3) >> 8)
             byte_array.append(word & BIT_MASK_4)
 
-        byte_array = bytearray(byte_array) + self.payload
-        return ''.join(map(chr, byte_array))
+        return ''.join(map(chr, byte_array)) + self.payload
