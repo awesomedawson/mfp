@@ -9,7 +9,7 @@ class MFSocket:
         self.io_loop = IOLoop()
 
     def mf_bind(self, address):
-        pass
+        self.io_loop.socket.bind(address)
 
     def mf_listen(self, window_size = 10):
         pass
@@ -30,24 +30,26 @@ class MFSocket:
                     syn_received = True
 
                     # TODO retransmit timer
-                    self.io_loop.send_queue.put(MFPacket(
+                    self.io_loop.send_queue.put((MFPacket(
                         self.port_number,
                         address[1],
                         ack_number = packet.sequence_number + 1,
                         ack = True,
                         syn = True
-                    ))
+                    ), address))
 
     def mf_connect(self, address):
         syn_ack_received = False
         self.io_loop.start()
 
+        print "Before put"
         # TODO retransmit timer
-        self.io_loop.send_queue.put(MFPacket(
+        self.io_loop.send_queue.put((MFPacket(
             self.port_number,
             address[1],
             syn = True
-        ))
+        ), address))
+        print "After put"
 
         while not syn_ack_received:
             packet, address = self.io_loop.receive_queue.get().packet
@@ -56,12 +58,12 @@ class MFSocket:
                 syn_ack_received = True
 
                 # TODO retransmit timer
-                self.io_loop.send_queue.put(MFPacket(
+                self.io_loop.send_queue.put((MFPacket(
                     port_number,
                     address[1],
                     ack_number = packet.sequence_number + 1,
                     ack = True
-                ))
+                ), address))
 
     def mf_write(self, data):
         pass

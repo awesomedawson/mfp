@@ -21,7 +21,10 @@ class IOLoop(Thread):
 
             try:
                 packet, address = self.send_queue.get_nowait()
+                print packet
+                print "Serialize " + packet.serialize()
                 self.socket.sendto(packet.serialize(), address)
+                
             except:
                 pass
 
@@ -31,5 +34,6 @@ class IOLoop(Thread):
                 # TODO make sure valid packet
                 packet = MFPacket.parse(packet)
                 self.receive_queue.put((packet, address))
+
             except:
                 pass
