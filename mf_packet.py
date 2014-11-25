@@ -34,6 +34,7 @@ class MFPacket:
 
     @classmethod
     def calculate_checksum(self, raw_packet):
+        # TODO make more complicated
         checksum_algorithm = hashlib.md5()
         checksum_algorithm.update(raw_packet)
         return int(checksum_algorithm.hexdigest(), 16) & int(math.pow(2, 16) - 1)
@@ -93,3 +94,7 @@ class MFPacket:
             byte_array.append(word & BIT_MASK_4)
 
         return ''.join(map(chr, byte_array)) + self.payload
+
+    def recalculate_checksum(self):
+        self.checksum = 0
+        self.checksum = self.__class__.calculate_checksum(self.serialize())

@@ -113,6 +113,7 @@ class MFSocket:
             start += payload_size
 
         # populate window and send all packets
+        # TODO handle dropped ack during handshake
         window = SlidingWindow(packets, self.window_size)
 
         for data_packet in window.window:
@@ -157,6 +158,8 @@ class MFSocket:
                     )
                     self.io_loop.send_queue.put((ack_packet, self.destination))
                     self.sequence_number += 1
+
+        # TODO close connection
 
         return ''.join(map(lambda packet: packet.payload, map(lambda sequence_number: packets[sequence_number], sorted(packets.keys()))))
 
