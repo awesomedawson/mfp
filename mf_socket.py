@@ -192,11 +192,33 @@ class MFSocket:
                     self.io_loop.send_queue.put((ack_packet, self.destination))
                     self.sequence_number += 1
 
-        # TODO close connection
+        # close connection
+        ack_received = False
+
+        fin_ack_packet = MFPacket(
+            self.port_number,
+            self.destination[1],
+            sequence_number = self.sequence_number,
+            fin = True,
+            ack = True,
+            ack_number = data_packet.sequence_number + 1
+        )
+        self.io_loop.send_queue.put((fin_ack_packet, self.destination))
+        self.sequence_number += 1
+
+        while not ack_received:
+            try:
+                ack_packet, address = self.io_loop.receive_queue.get(True, 1)
+            except Queue.Empty:
+                break
+
+            ack_received = address == self.destination and ack_packet.ack and ack_packet.ack_number - 1 == self.sequence_number
 
         return ''.join(map(lambda packet: packet.payload, map(lambda sequence_number: packets[sequence_number], sorted(packets.keys()))))
 
     def mf_close(self):
+        fin_ack_received = False
+
         fin_packet = MFPacket(
             self.port_number,
             self.destination[1],
@@ -205,3 +227,20 @@ class MFSocket:
         )
         self.io_loop.send_queue.put((fin_packet, self.destination))
         self.sequence_number += 1
+
+        while not fin_ack_received:
+            try:
+                fin_ack_packet, address = self.io_loop.receive_queue.get(True, 1)
+            except Queue.Empty:
+                break
+
+            if address == self.destination and fin_ack_packet.fin and fin_ack_packet.ack:
+                ack_packet = MFPacket(
+                    self.port_number,
+                    self.destination[1],
+                    sequence_number = self.sequence_number,
+                    ack = True,
+                    ack_number = fin_ack_packet.sequence_number
+                )
+                self.io_loop.send_queue.put((ack_packet, self.destination))
+                self.sequence_number += 1
