@@ -18,6 +18,7 @@ def main():
 	# set up 
 	socket = MFSocket(window_size=int(window), verbose=True)
 	socket.mf_assign(int(client_udp_port))
+	socket.mf_bind(("0.0.0.0", int(client_udp_port)))
 	#socket.mf_connect(('127.0.0.1', 4321))
 	socket.mf_connect((str(net_emu_ip), int(net_emu_udp_port)))
 
