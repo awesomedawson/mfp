@@ -1,6 +1,7 @@
 from mf_packet import MFPacket
 from io_loop import IOLoop
 from sliding_window import SlidingWindow
+from retransmit_timer import RetransmitTimer
 import Queue
 import time
 
@@ -9,6 +10,7 @@ class MFSocket:
         self.window_size = window_size
         self.window = {}
         self.sequence_number = 0
+        self.retransmit_timer = RetransmitTimer()
         self.io_loop = IOLoop()
 
     def mf_assign(self, port_number):
@@ -27,17 +29,17 @@ class MFSocket:
         # wait for syn
         while not syn_received:
             try:
-                packet, self.destination = self.io_loop.receive_queue.get(True, 1)
+                syn_packet, self.destination = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
                 continue
 
-            syn_received = packet.syn
+            syn_received = self.__verify_syn(syn_packet, self.destination)
 
         # send syn/ack
         syn_ack_packet = MFPacket(
             self.port_number,
             self.destination[1],
-            ack_number = packet.sequence_number + 1,
+            ack_number = syn_packet.sequence_number + 1,
             ack = True,
             syn = True
         )
@@ -46,12 +48,14 @@ class MFSocket:
         # wait for ack, retransmit on timeout
         while not ack_received:
             try:
-                packet, address = self.io_loop.receive_queue.get(True, 1)
+                ack_packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
+                syn_ack_packet.frequency += 1
+                syn_ack_packet.recalculate_checksum()
                 self.io_loop.send_queue.put((syn_ack_packet, self.destination))
                 continue
 
-            ack_received = address == self.destination and packet.ack
+            ack_received = self.__verify_ack(ack_packet, address, syn_ack_packet.sequence_number)
 
     def mf_connect(self, address):
         self.destination = address
@@ -72,18 +76,20 @@ class MFSocket:
         # wait for syn/ack, retransmit on timeout
         while not syn_ack_received:
             try:
-                packet, address = self.io_loop.receive_queue.get(True, 1)
+                syn_ack_packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
+                syn_packet.frequency += 1
+                syn_packet.recalculate_checksum()
                 self.io_loop.send_queue.put((syn_packet, self.destination))
                 continue
 
-            syn_ack_received = address == self.destination and packet.syn and packet.ack
+            syn_ack_received = self.__verify_syn_ack(syn_ack_packet, address, syn_packet.sequence_number)
 
         # send ack
         ack_packet = MFPacket(
             self.port_number,
             self.destination[1],
-            ack_number = packet.sequence_number + 1,
+            ack_number = syn_ack_packet.sequence_number + 1,
             sequence_number = self.sequence_number,
             ack = True
         )
@@ -115,28 +121,50 @@ class MFSocket:
         # populate window and send all packets
         window = SlidingWindow(packets, self.window_size)
 
+        last_sent = time.time()
+        time_remaining = self.retransmit_timer.timeout
         for data_packet in window.window:
             self.io_loop.send_queue.put((data_packet, self.destination))
 
         while not window.is_empty():
             try:
                 # wait for incoming packet
-                ack_packet, address = self.io_loop.receive_queue.get(True, 1)
+                ack_packet, address = self.io_loop.receive_queue.get(True, time_remaining)
             except Queue.Empty:
                 # timeout, go back n
+                last_sent = time.time()
+                time_remaining = self.retransmit_timer.timeout
                 for data_packet in window.window:
+                    data_packet.frequency += 1
+                    data_packet.recalculate_checksum()
                     self.io_loop.send_queue.put((data_packet, self.destination))
 
                 continue
 
+            # if still getting syn/ack, retransmit ack
+            if self.__verify_syn_ack(ack_packet, address, 1):
+                ack_packet = MFPacket(
+                    self.port_number,
+                    self.destination[1],
+                    ack_number = ack_packet.sequence_number + 1,
+                    sequence_number = 2,
+                    ack = True
+                )
+                self.io_loop.send_queue.put((ack_packet, self.destination))
             # if first packet in pipeline is acknowledged, slide the window
-            if ack_packet.ack and ack_packet.ack_number - 1 == window.window[0].sequence_number:
+            elif self.__verify_ack(ack_packet, address, window.window[0].sequence_number):
+                self.retransmit_timer.update(ack_packet.frequency, time.time() - last_sent)
                 window.slide()
+            # otherwise, update time remaining
+            else:
+                time_remaining -= time.time() - last_sent
 
     def mf_read(self):
         fin_received = False
         packets = {}
+        frequencies = {}
 
+        # until connection is closed, read data
         while not fin_received:
             try:
                 data_packet, address = self.io_loop.receive_queue.get(True, 1)
@@ -147,20 +175,30 @@ class MFSocket:
                 if data_packet.fin:
                     fin_received = True
                 else:
+                    if frequencies.get(data_packet.sequence_number):
+                        frequencies[data_packet.sequence_number] += 1
+                    else:
+                        frequencies[data_packet.sequence_number] = 1
+
                     packets[data_packet.sequence_number] = data_packet
                     ack_packet = MFPacket(
                         self.port_number,
                         self.destination[1],
                         sequence_number = self.sequence_number,
+                        frequency = frequencies[data_packet.sequence_number],
                         ack = True,
                         ack_number = data_packet.sequence_number + 1
                     )
                     self.io_loop.send_queue.put((ack_packet, self.destination))
                     self.sequence_number += 1
 
+        self.__close(data_packet.sequence_number + 1)
+
         return ''.join(map(lambda packet: packet.payload, map(lambda sequence_number: packets[sequence_number], sorted(packets.keys()))))
 
     def mf_close(self):
+        fin_ack_received = False
+
         fin_packet = MFPacket(
             self.port_number,
             self.destination[1],
@@ -169,3 +207,51 @@ class MFSocket:
         )
         self.io_loop.send_queue.put((fin_packet, self.destination))
         self.sequence_number += 1
+
+        while not fin_ack_received:
+            try:
+                fin_ack_packet, address = self.io_loop.receive_queue.get(True, 1)
+            except Queue.Empty:
+                break
+
+            if address == self.destination and fin_ack_packet.fin and fin_ack_packet.ack:
+                ack_packet = MFPacket(
+                    self.port_number,
+                    self.destination[1],
+                    sequence_number = self.sequence_number,
+                    ack = True,
+                    ack_number = fin_ack_packet.sequence_number
+                )
+                self.io_loop.send_queue.put((ack_packet, self.destination))
+                self.sequence_number += 1
+
+    def __close(self, ack_number):
+        ack_received = False
+
+        fin_ack_packet = MFPacket(
+            self.port_number,
+            self.destination[1],
+            sequence_number = self.sequence_number,
+            fin = True,
+            ack = True,
+            ack_number = ack_number
+        )
+        self.io_loop.send_queue.put((fin_ack_packet, self.destination))
+        self.sequence_number += 1
+
+        while not ack_received:
+            try:
+                ack_packet, address = self.io_loop.receive_queue.get(True, 1)
+            except Queue.Empty:
+                break
+
+            ack_received = self.__verify_ack(ack_packet, address, fin_ack_packet.sequence_number)
+
+    def __verify_syn(self, packet, address):
+        return address == self.destination and packet.syn
+
+    def __verify_ack(self, packet, address, sequence_number):
+        return address == self.destination and packet.ack and packet.ack_number - 1 == sequence_number
+
+    def __verify_syn_ack(self, packet, address, sequence_number):
+        return address == self.destination and packet.syn and packet.ack and packet.ack_number - 1 == sequence_number

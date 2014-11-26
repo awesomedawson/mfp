@@ -1,6 +1,5 @@
 from threading import Thread
 import Queue
-from receive_queue import ReceiveQueue
 from mf_packet import MFPacket
 from mf_packet import ParseException
 import socket
