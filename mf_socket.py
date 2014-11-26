@@ -185,6 +185,8 @@ class MFSocket:
                 self.retransmit_timer.update(ack_packet.frequency, time.time() - last_sent)
                 self.logger.debug('updated retransmit timer. timeout is now ' + str(self.retransmit_timer.timeout))
                 window.slide()
+                self.io_loop.send_queue.put((window.window[-1], self.destination))
+                self.sequence_number += 1
             # otherwise, update time remaining
             else:
                 time_remaining -= time.time() - last_sent
