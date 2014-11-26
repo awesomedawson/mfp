@@ -98,3 +98,6 @@ class MFPacket:
     def recalculate_checksum(self):
         self.checksum = 0
         self.checksum = self.__class__.calculate_checksum(self.serialize())
+
+    def is_terminator(self):
+        return not self.ack and not self.syn and not self.fin and self.payload == ''

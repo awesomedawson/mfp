@@ -54,6 +54,7 @@ class MFSocket:
             syn = True
         )
         self.io_loop.send_queue.put((syn_ack_packet, self.destination))
+        self.sequence_number += 1
 
         # wait for ack, retransmit on timeout
         while not ack_received:
@@ -101,7 +102,7 @@ class MFSocket:
             syn_ack_received = self.__verify_syn_ack(syn_ack_packet, address, syn_packet.sequence_number)
 
         # send ack
-        self.logger.debug('sending ack to finish handshake.')
+        self.logger.debug('received syn/ack during handshake. sending ack to finish handshake.')
         ack_packet = MFPacket(
             self.port_number,
             self.destination[1],
@@ -133,6 +134,14 @@ class MFSocket:
             packets.append(data_packet)
             self.sequence_number += 1
             start += payload_size
+
+        terminator_packet = MFPacket(
+            self.port_number,
+            self.destination[1],
+            sequence_number = self.sequence_number
+        )
+        packets.append(terminator_packet)
+        self.sequence_number += 1
 
         # populate window and send all packets
         window = SlidingWindow(packets, self.window_size)
@@ -182,41 +191,44 @@ class MFSocket:
                 self.logger.debug('bunk packet received. time remaining before timeout: ' + str(time_remaining))
 
     def mf_read(self):
-        fin_received = False
+        terminator_received = False
+        read_terminated = False
         packets = {}
         frequencies = {}
 
         # until connection is closed, read data
-        while not fin_received:
+        while not read_terminated:
             try:
                 data_packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
                 continue
 
             if address == self.destination:
-                if data_packet.fin:
-                    self.logger.debug('fin received. closing.')
-                    fin_received = True
+                if frequencies.get(data_packet.sequence_number):
+                    frequencies[data_packet.sequence_number] += 1
                 else:
-                    if frequencies.get(data_packet.sequence_number):
-                        frequencies[data_packet.sequence_number] += 1
-                    else:
-                        frequencies[data_packet.sequence_number] = 1
+                    frequencies[data_packet.sequence_number] = 1
 
-                    packets[data_packet.sequence_number] = data_packet
-                    self.logger.debug('sending ack.')
-                    ack_packet = MFPacket(
-                        self.port_number,
-                        self.destination[1],
-                        sequence_number = self.sequence_number,
-                        frequency = frequencies[data_packet.sequence_number],
-                        ack = True,
-                        ack_number = data_packet.sequence_number + 1
-                    )
-                    self.io_loop.send_queue.put((ack_packet, self.destination))
-                    self.sequence_number += 1
+                packets[data_packet.sequence_number] = data_packet
+                self.logger.debug('sending ack during data transfer.')
+                ack_packet = MFPacket(
+                    self.port_number,
+                    self.destination[1],
+                    sequence_number = self.sequence_number,
+                    frequency = frequencies[data_packet.sequence_number],
+                    ack = True,
+                    ack_number = data_packet.sequence_number + 1
+                )
+                self.io_loop.send_queue.put((ack_packet, self.destination))
+                self.sequence_number += 1
 
-        self.__close(data_packet.sequence_number + 1)
+                if data_packet.is_terminator():
+                    terminator_received = True
+                    self.logger.debug('terminator packet detected.')
+
+                if terminator_received:
+                    sorted_keys = sorted(packets.keys())
+                    read_terminated = sorted_keys == range(sorted_keys[0], sorted_keys[0] + len(sorted_keys))
 
         return ''.join(map(lambda packet: packet.payload, map(lambda sequence_number: packets[sequence_number], sorted(packets.keys()))))
 
