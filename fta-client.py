@@ -39,6 +39,7 @@ def main():
 			print "Recieved contents"
 			f = open("copied_" + command[1], 'w')
 			f.write(read_val)
+			print "Saved file as: " + "copied_" + command[1]
 			f.close()
 
 		else:

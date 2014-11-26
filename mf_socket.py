@@ -17,6 +17,9 @@ class MFSocket:
         self.io_loop = IOLoop()
         self.logger = logging.getLogger('mf_socket')
 
+        self.terminator_packet_num_sent = 0
+        self.terminator_packet_seq_num = 0
+
         if verbose:
             self.logger.setLevel(10)
         else:
@@ -141,6 +144,8 @@ class MFSocket:
             sequence_number = self.sequence_number
         )
         packets.append(terminator_packet)
+        self.terminator_packet_seq_num = self.sequence_number
+        self.terminator_packet_num_sent = 0
         self.sequence_number += 1
 
         # populate window and send all packets
@@ -162,10 +167,20 @@ class MFSocket:
                 self.logger.debug('timed out waiting for ack during data transmission. retransmitting window.')
                 last_sent = time.time()
                 time_remaining = self.retransmit_timer.timeout
+
                 for data_packet in window.window:
+
+                    if self.terminator_packet_seq_num == data_packet.sequence_number:
+                        self.terminator_packet_num_sent += 1
+                        if self.terminator_packet_num_sent > 3:
+                            self.logger.debug('Unable to end connection, terminating now')
+                            return
+
                     data_packet.frequency += 1
                     data_packet.recalculate_checksum()
                     self.io_loop.send_queue.put((data_packet, self.destination))
+
+
 
                 continue
 
@@ -192,9 +207,9 @@ class MFSocket:
                     #print "executing"
             # otherwise, update time remaining
             else:
-                time_remaining -= time.time() - last_sent
+                time_remaining -= time.time() - last_sent/4
                 if time_remaining < time.time():
-                    time_remaining = 1
+                    time_remaining = .5
                 self.logger.debug('bunk packet received. time remaining before timeout: ' + str(time_remaining))
 
     def mf_read(self):

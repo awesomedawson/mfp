@@ -27,7 +27,7 @@ def main():
 	while True:
 		message = socket.mf_read()
 		print "Accepted file request: " + message
-		
+
 		if message == '':
 			pass
 		if not os.path.isfile(message):
@@ -40,7 +40,7 @@ def main():
 		print "Sending contents"
 		socket.mf_write(contents)
 		f.close()
-		raw_input("Press any key to accept more connections")
+		raw_input("Press enter to accept more connections")
 
 if __name__ == '__main__':
 	main()
