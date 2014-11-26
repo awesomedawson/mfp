@@ -23,6 +23,7 @@ class IOLoop(Thread):
 
             try:
                 packet, address = self.socket.recvfrom(4096)
+                #print packet
                 packet = MFPacket.parse(packet)
                 self.receive_queue.put((packet, address))
             except (socket.timeout, ParseException), e:

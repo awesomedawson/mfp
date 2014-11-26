@@ -16,7 +16,7 @@ def main():
 	window = raw_input("Enter a window size W: ")
 
 	# set up 
-	socket = MFSocket(window_size=window, verbose=True)
+	socket = MFSocket(window_size=int(window), verbose=True)
 	socket.mf_assign(int(client_udp_port))
 	socket.mf_connect(('127.0.0.1', 4321))
 	#socket.mf_write('hello. this is a test. 1234567890    xxxxxx')
@@ -35,11 +35,10 @@ def main():
 			socket.mf_write(command[1])
 			print "Sending file request: " + command[1]
 			read_val = socket.mf_read()
-			print "Recieved contents: " + read_val
+			print "Recieved contents"
 			f = open("transfered_file", 'w')
 			f.write(read_val)
-
-			socket.close()
+			f.close()
 
 		else:
 			print "Invalid command"

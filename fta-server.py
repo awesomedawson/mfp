@@ -17,19 +17,21 @@ def main():
 	print "Control + c to terminate"
 	
 	# set up server here
-	socket = MFSocket(window_size=window, verbose=True)
+	socket = MFSocket(window_size=int(window), verbose=True)
 	socket.mf_bind(("", int(server_udp_port)))
+	socket.mf_accept()
+	destination = socket.destination
 	print "server set up"
 
 	while True:
-		socket.mf_accept()
-		destination = socket.destination
 		message = socket.mf_read()
 		print "Accepted file request: " + message
-		f = open(message, 'r').read()
-		print "Sending contents: " + f
-		socket.mf_write(f)
+		f = open(message, 'r')
+		contents = f.read()
+		print "Sending contents"
+		socket.mf_write(contents)
 		f.close()
+		raw_input("Press any key to accept more connections")
 
 if __name__ == '__main__':
-    main()
+	main()

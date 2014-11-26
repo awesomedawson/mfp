@@ -115,7 +115,7 @@ class MFSocket:
 
     def mf_write(self, data):
         start = 0
-        payload_size = 1024
+        payload_size = 512
         packets = []
 
         # chunk data into packets
@@ -151,6 +151,7 @@ class MFSocket:
         self.logger.debug('sending data packets in window.')
         for data_packet in window.window:
             self.io_loop.send_queue.put((data_packet, self.destination))
+            print data_packet.data_offset
 
         while not window.is_empty():
             try:
@@ -185,8 +186,10 @@ class MFSocket:
                 self.retransmit_timer.update(ack_packet.frequency, time.time() - last_sent)
                 self.logger.debug('updated retransmit timer. timeout is now ' + str(self.retransmit_timer.timeout))
                 window.slide()
-                self.io_loop.send_queue.put((window.window[-1], self.destination))
-                self.sequence_number += 1
+                if not window.is_emptying():
+                    self.io_loop.send_queue.put((window.window[-1], self.destination))
+                    self.sequence_number += 1
+                    print "executing"
             # otherwise, update time remaining
             else:
                 time_remaining -= time.time() - last_sent
@@ -202,6 +205,7 @@ class MFSocket:
         while not read_terminated:
             try:
                 data_packet, address = self.io_loop.receive_queue.get(True, 1)
+                #print data_packet.payload
             except Queue.Empty:
                 continue
 
@@ -210,6 +214,7 @@ class MFSocket:
                     frequencies[data_packet.sequence_number] += 1
                 else:
                     frequencies[data_packet.sequence_number] = 1
+                #print data_packet.sequence_number
 
                 packets[data_packet.sequence_number] = data_packet
                 self.logger.debug('sending ack during data transfer.')
@@ -231,7 +236,9 @@ class MFSocket:
                 if terminator_received:
                     sorted_keys = sorted(packets.keys())
                     read_terminated = sorted_keys == range(sorted_keys[0], sorted_keys[0] + len(sorted_keys))
-
+        #for key in packets.keys():
+        #    print packets[key].payload
+        #print "Packet.keys length: " + str(len(packets.keys()))
         return ''.join(map(lambda packet: packet.payload, map(lambda sequence_number: packets[sequence_number], sorted(packets.keys()))))
 
     def mf_close(self):
