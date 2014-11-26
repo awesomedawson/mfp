@@ -1,5 +1,6 @@
 import sys
 from mf_socket import MFSocket
+import os.path
 
 def main():
 	if len(sys.argv) != 4:
@@ -26,7 +27,15 @@ def main():
 	while True:
 		message = socket.mf_read()
 		print "Accepted file request: " + message
+		
+		if message == '':
+			pass
+		if not os.path.isfile(message):
+			print "Received file request that doesn't exist!"
+			pass
+
 		f = open(message, 'r')
+		
 		contents = f.read()
 		print "Sending contents"
 		socket.mf_write(contents)

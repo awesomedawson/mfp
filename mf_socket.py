@@ -193,6 +193,8 @@ class MFSocket:
             # otherwise, update time remaining
             else:
                 time_remaining -= time.time() - last_sent
+                if time_remaining < time.time():
+                    time_remaining = 1
                 self.logger.debug('bunk packet received. time remaining before timeout: ' + str(time_remaining))
 
     def mf_read(self):
