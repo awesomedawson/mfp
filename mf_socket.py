@@ -1,6 +1,7 @@
 from mf_packet import MFPacket
 from io_loop import IOLoop
 from sliding_window import SlidingWindow
+from retransmit_timer import RetransmitTimer
 import Queue
 import time
 
@@ -9,6 +10,7 @@ class MFSocket:
         self.window_size = window_size
         self.window = {}
         self.sequence_number = 0
+        self.retransmit_timer = RetransmitTimer()
         self.io_loop = IOLoop()
 
     def mf_assign(self, port_number):
@@ -117,18 +119,21 @@ class MFSocket:
             start += payload_size
 
         # populate window and send all packets
-        # TODO handle dropped ack during handshake
         window = SlidingWindow(packets, self.window_size)
 
+        last_sent = time.time()
+        time_remaining = self.retransmit_timer.timeout
         for data_packet in window.window:
             self.io_loop.send_queue.put((data_packet, self.destination))
 
         while not window.is_empty():
             try:
                 # wait for incoming packet
-                ack_packet, address = self.io_loop.receive_queue.get(True, 1)
+                ack_packet, address = self.io_loop.receive_queue.get(True, time_remaining)
             except Queue.Empty:
                 # timeout, go back n
+                last_sent = time.time()
+                time_remaining = self.retransmit_timer.timeout
                 for data_packet in window.window:
                     data_packet.frequency += 1
                     data_packet.recalculate_checksum()
@@ -136,9 +141,23 @@ class MFSocket:
 
                 continue
 
+            # if still getting syn/ack, retransmit ack
+            if address == self.destination and ack_packet.syn and ack_packet.ack:
+                ack_packet = MFPacket(
+                    self.port_number,
+                    self.destination[1],
+                    ack_number = packet.sequence_number + 1,
+                    sequence_number = 2,
+                    ack = True
+                )
+                self.io_loop.send_queue.put((ack_packet, self.destination))
             # if first packet in pipeline is acknowledged, slide the window
-            if ack_packet.ack and ack_packet.ack_number - 1 == window.window[0].sequence_number:
+            elif address == self.destination and ack_packet.ack and ack_packet.ack_number - 1 == window.window[0].sequence_number:
+                self.retransmit_timer.update(ack_packet.frequency, time.time() - last_sent)
                 window.slide()
+            # otherwise, update time remaining
+            else:
+                time_remaining -= time.time() - last_sent
 
     def mf_read(self):
         fin_received = False
