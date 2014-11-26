@@ -48,6 +48,8 @@ class MFSocket:
             try:
                 packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
+                syn_ack_packet.frequency += 1
+                syn_ack_packet.recalculate_checksum()
                 self.io_loop.send_queue.put((syn_ack_packet, self.destination))
                 continue
 
@@ -74,6 +76,8 @@ class MFSocket:
             try:
                 packet, address = self.io_loop.receive_queue.get(True, 1)
             except Queue.Empty:
+                syn_packet.frequency += 1
+                syn_packet.recalculate_checksum()
                 self.io_loop.send_queue.put((syn_packet, self.destination))
                 continue
 
@@ -126,6 +130,8 @@ class MFSocket:
             except Queue.Empty:
                 # timeout, go back n
                 for data_packet in window.window:
+                    data_packet.frequency += 1
+                    data_packet.recalculate_checksum()
                     self.io_loop.send_queue.put((data_packet, self.destination))
 
                 continue
@@ -137,7 +143,9 @@ class MFSocket:
     def mf_read(self):
         fin_received = False
         packets = {}
+        frequencies = {}
 
+        # until connection is closed, read data
         while not fin_received:
             try:
                 data_packet, address = self.io_loop.receive_queue.get(True, 1)
@@ -148,11 +156,17 @@ class MFSocket:
                 if data_packet.fin:
                     fin_received = True
                 else:
+                    if frequencies.get(data_packet.sequence_number):
+                        frequencies[data_packet.sequence_number] += 1
+                    else:
+                        frequencies[data_packet.sequence_number] = 1
+
                     packets[data_packet.sequence_number] = data_packet
                     ack_packet = MFPacket(
                         self.port_number,
                         self.destination[1],
                         sequence_number = self.sequence_number,
+                        frequency = frequencies[data_packet.sequence_number],
                         ack = True,
                         ack_number = data_packet.sequence_number + 1
                     )
