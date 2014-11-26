@@ -58,8 +58,8 @@ class MFPacket:
         validate_checksum(data)
 
         raw_packet = map(ord, data)
-        print "packet: " + str(raw_packet)
-        print "packet 32: " + str(raw_packet[13])
+        #print "packet: " + str(raw_packet)
+        #print "packet 32: " + str(raw_packet[13])
 
         return MFPacket(
             (raw_packet[0] << 8) | raw_packet[1],

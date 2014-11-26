@@ -18,8 +18,8 @@ def main():
 	# set up 
 	socket = MFSocket(window_size=int(window), verbose=True)
 	socket.mf_assign(int(client_udp_port))
-	socket.mf_connect(('127.0.0.1', 4321))
-	#socket.mf_write('hello. this is a test. 1234567890    xxxxxx')
+	#socket.mf_connect(('127.0.0.1', 4321))
+	socket.mf_connect((str(net_emu_ip), int(net_emu_udp_port)))
 
 
 	while True:
@@ -36,7 +36,7 @@ def main():
 			print "Sending file request: " + command[1]
 			read_val = socket.mf_read()
 			print "Recieved contents"
-			f = open("transfered_file", 'w')
+			f = open("copied_" + command[1], 'w')
 			f.write(read_val)
 			f.close()
 

@@ -151,7 +151,7 @@ class MFSocket:
         self.logger.debug('sending data packets in window.')
         for data_packet in window.window:
             self.io_loop.send_queue.put((data_packet, self.destination))
-            print data_packet.data_offset
+            #print data_packet.data_offset
 
         while not window.is_empty():
             try:
@@ -189,7 +189,7 @@ class MFSocket:
                 if not window.is_emptying():
                     self.io_loop.send_queue.put((window.window[-1], self.destination))
                     self.sequence_number += 1
-                    print "executing"
+                    #print "executing"
             # otherwise, update time remaining
             else:
                 time_remaining -= time.time() - last_sent
